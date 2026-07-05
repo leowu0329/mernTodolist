@@ -13,10 +13,12 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 
-// 路由
+// 核心路由：同時掛載 /api/todos 與 / (因為 Vercel 轉發過來時可能會移除前綴)
 app.use('/api/todos', todoRoutes);
+app.use('/', todoRoutes); 
 
-app.get('/', (req, res) => {
+// 將原本的測試根路由移除，或者改到別的路徑，避免它搶走所有請求
+app.get('/api-health', (req, res) => {
   res.send('Todo API 運行中...');
 });
 
