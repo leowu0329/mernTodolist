@@ -1,0 +1,10 @@
+/* 引入 Bootstrap */
+@import 'bootstrap/dist/css/bootstrap.min.css';
+
+body {
+  font-family: 'Roboto', 'Noto Sans TC', sans-serif;
+  background-color: #f8f9fa;
+  color: #212529;
+}
+
+/* 確保中英文與數字套用正確順序：優先匹配英數(Roboto)，中文自動匹配 Noto Sans TC */
