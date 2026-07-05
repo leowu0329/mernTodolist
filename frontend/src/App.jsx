@@ -8,14 +8,24 @@ function App() {
   // 確保初始狀態為空陣列 []
   const [todos, setTodos] = useState([]);
   const [input, setInput] = useState('');
-  
+
   // Modal 相關狀態
   const [showModal, setShowModal] = useState(false);
   const [todoToDelete, setTodoToDelete] = useState(null);
 
+  // 在 useEffect 中加入定時器
   useEffect(() => {
+    // 1. 網頁開啟時先讀取一次
     fetchTodos();
-  }, []);
+
+    // 2. 設定定時器，每 3000 毫秒（3秒）自動與後端資料庫同步一次
+    const syncInterval = setInterval(() => {
+      fetchTodos();
+    }, 3000);
+
+    // 3. 關鍵：當元件被銷毀（例如關閉網頁）時，清除定時器，避免記憶體洩漏
+    return () => clearInterval(syncInterval);
+  }, []); // 保持空陣列，代表只在初始化時執行這段監聽
 
   // 1. 取得所有 Todo
   const fetchTodos = async () => {
@@ -54,13 +64,19 @@ function App() {
 
   // 3. 切換單一 Todo 狀態
   const toggleTodo = async (id) => {
+    if (!isTodosArray) return;
+
+    // 【樂觀更新】前端立刻切換狀態，讓使用者點擊時「秒有反應」
+    const previousTodos = [...todos]; // 備份舊資料，以防萬一
+    setTodos(todos.map(todo => todo._id === id ? { ...todo, completed: !todo.completed } : todo));
+
     try {
-      const res = await axios.put(`${API_URL}/${id}`);
-      if (Array.isArray(todos)) {
-        setTodos(todos.map(todo => todo._id === id ? res.data : todo));
-      }
+      // 背景默默發送請求給後端
+      await axios.put(`${API_URL}/${id}`);
+      // 這裡不需要再接 res.data 塞回去了，因為 3 秒後的輪詢會自動修正最終狀態
     } catch (err) {
-      console.error('更新失敗', err);
+      console.error('更新失敗，回滾舊數據', err);
+      setTodos(previousTodos); // 如果後端失敗，自動回滾
     }
   };
 
@@ -93,7 +109,7 @@ function App() {
   const handleSelectAll = async () => {
     if (!isTodosArray) return;
     const targetStatus = !isAllChecked;
-    
+
     // 前端發送請求同步後端狀態
     const updatedTodos = await Promise.all(
       todos.map(async (todo) => {
@@ -120,7 +136,7 @@ function App() {
   return (
     <div className="container py-5" style={{ maxWidth: '650px' }}>
       <h1 className="text-center mb-4 fw-bold text-primary">MERN Todo List</h1>
-      
+
       {/* 統計資訊欄位 */}
       <div className="row g-2 mb-4 text-center">
         <div className="col-4">
@@ -192,8 +208,8 @@ function App() {
                   {todo.title}
                 </span>
               </div>
-              <button 
-                className="btn btn-outline-danger btn-sm" 
+              <button
+                className="btn btn-outline-danger btn-sm"
                 onClick={() => openDeleteModal(todo)}
                 style={{ flexShrink: 0 }}
               >
