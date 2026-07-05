@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
+// 根據環境變數自動切換 API URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/todos';
 
 function App() {
+  // 確保初始狀態為空陣列 []
   const [todos, setTodos] = useState([]);
   const [input, setInput] = useState('');
   
@@ -19,9 +21,16 @@ function App() {
   const fetchTodos = async () => {
     try {
       const res = await axios.get(API_URL);
-      setTodos(res.data);
+      // 安全檢查：確保後端回傳的是陣列才寫入狀態，否則給予空陣列
+      if (Array.isArray(res.data)) {
+        setTodos(res.data);
+      } else {
+        console.error('後端回傳的資料格式不是陣列:', res.data);
+        setTodos([]);
+      }
     } catch (err) {
       console.error('讀取資料失敗', err);
+      setTodos([]);
     }
   };
 
@@ -31,7 +40,12 @@ function App() {
     if (!input.trim()) return;
     try {
       const res = await axios.post(API_URL, { title: input });
-      setTodos([res.data, ...todos]);
+      // 確保目前 todos 是陣列才進行解構新增
+      if (Array.isArray(todos)) {
+        setTodos([res.data, ...todos]);
+      } else {
+        setTodos([res.data]);
+      }
       setInput('');
     } catch (err) {
       console.error('新增失敗', err);
@@ -42,7 +56,9 @@ function App() {
   const toggleTodo = async (id) => {
     try {
       const res = await axios.put(`${API_URL}/${id}`);
-      setTodos(todos.map(todo => todo._id === id ? res.data : todo));
+      if (Array.isArray(todos)) {
+        setTodos(todos.map(todo => todo._id === id ? res.data : todo));
+      }
     } catch (err) {
       console.error('更新失敗', err);
     }
@@ -59,7 +75,9 @@ function App() {
     if (!todoToDelete) return;
     try {
       await axios.delete(`${API_URL}/${todoToDelete._id}`);
-      setTodos(todos.filter(todo => todo._id !== todoToDelete._id));
+      if (Array.isArray(todos)) {
+        setTodos(todos.filter(todo => todo._id !== todoToDelete._id));
+      }
       setShowModal(false);
       setTodoToDelete(null);
     } catch (err) {
@@ -67,25 +85,24 @@ function App() {
     }
   };
 
-  // 6. 全選 / 全不選 邏輯
-  // 計算目前是否「全部都被勾選」
-  const isAllChecked = todos.length > 0 && todos.every(todo => todo.completed);
+  // 6. 全選 / 全不選 安全邏輯
+  const isTodosArray = Array.isArray(todos);
+  // 使用安全導引操作符 ?. 確保 todo 存在
+  const isAllChecked = isTodosArray && todos.length > 0 && todos.every(todo => todo?.completed);
 
   const handleSelectAll = async () => {
-    // 如果目前已經全選，接下來就是要「全不選」；反之亦然
+    if (!isTodosArray) return;
     const targetStatus = !isAllChecked;
     
-    // 預先優化 UI 體驗（前端先變更，再讓後端跑同步，或逐一發送請求）
-    // 註：實務上若資料量大，後端通常會做一個批次更新 API (PUT /api/todos/toggle-all)
-    // 這裡示範前端狀態同步，並發送 API 更新
+    // 前端發送請求同步後端狀態
     const updatedTodos = await Promise.all(
       todos.map(async (todo) => {
-        if (todo.completed !== targetStatus) {
+        if (todo && todo.completed !== targetStatus) {
           try {
             const res = await axios.put(`${API_URL}/${todo._id}`);
             return res.data;
           } catch (err) {
-            console.error(err);
+            console.error('批次更新失敗的項目 ID:', todo._id, err);
             return todo;
           }
         }
@@ -95,9 +112,9 @@ function App() {
     setTodos(updatedTodos);
   };
 
-  // 7. 統計數據計算
-  const totalCount = todos.length;
-  const completedCount = todos.filter(todo => todo.completed).length;
+  // 7. 統計數據安全計算
+  const totalCount = isTodosArray ? todos.length : 0;
+  const completedCount = isTodosArray ? todos.filter(todo => todo?.completed).length : 0;
   const uncompletedCount = totalCount - completedCount;
 
   return (
@@ -160,28 +177,30 @@ function App() {
 
       {/* Todo 列表 */}
       <ul className="list-group shadow-sm">
-        {todos.map(todo => (
-          <li key={todo._id} className="list-group-item d-flex justify-content-between align-items-center p-3 animate-fade">
-            <div className="d-flex align-items-center" style={{ flex: 1, marginRight: '10px' }}>
-              <input
-                className="form-check-input me-3"
-                type="checkbox"
-                checked={todo.completed}
-                onChange={() => toggleTodo(todo._id)}
-                style={{ width: '1.4rem', height: '1.4rem', cursor: 'pointer', flexShrink: 0 }}
-              />
-              <span className={`fs-5 text-break ${todo.completed ? 'text-decoration-line-through text-muted' : ''}`}>
-                {todo.title}
-              </span>
-            </div>
-            <button 
-              className="btn btn-outline-danger btn-sm" 
-              onClick={() => openDeleteModal(todo)}
-              style={{ flexShrink: 0 }}
-            >
-              刪除
-            </button>
-          </li>
+        {isTodosArray && todos.map(todo => (
+          todo && (
+            <li key={todo._id} className="list-group-item d-flex justify-content-between align-items-center p-3">
+              <div className="d-flex align-items-center" style={{ flex: 1, marginRight: '10px' }}>
+                <input
+                  className="form-check-input me-3"
+                  type="checkbox"
+                  checked={todo.completed || false}
+                  onChange={() => toggleTodo(todo._id)}
+                  style={{ width: '1.4rem', height: '1.4rem', cursor: 'pointer', flexShrink: 0 }}
+                />
+                <span className={`fs-5 text-break ${todo.completed ? 'text-decoration-line-through text-muted' : ''}`}>
+                  {todo.title}
+                </span>
+              </div>
+              <button 
+                className="btn btn-outline-danger btn-sm" 
+                onClick={() => openDeleteModal(todo)}
+                style={{ flexShrink: 0 }}
+              >
+                刪除
+              </button>
+            </li>
+          )
         ))}
         {totalCount === 0 && (
           <li className="list-group-item text-center p-4 text-muted bg-light">
@@ -193,13 +212,12 @@ function App() {
       {/* ================= Bootstrap Modal (刪除確認視窗) ================= */}
       {showModal && (
         <>
-          {/* Modal 本體 */}
-          <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
             <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content border-0 shadow">
                 <div className="modal-header bg-danger text-white">
                   <h5 className="modal-title fw-bold">⚠️ 確認刪除</h5>
-                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowModal(false)}></button>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => { setShowModal(false); setTodoToDelete(null); }}></button>
                 </div>
                 <div className="modal-body py-4">
                   <p className="fs-5 mb-1">您確定要刪除此項待辦事項嗎？</p>
@@ -209,14 +227,13 @@ function App() {
                   <span className="text-danger small">*此操作將無法復原。</span>
                 </div>
                 <div className="modal-footer bg-light">
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>取消</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => { setShowModal(false); setTodoToDelete(null); }}>取消</button>
                   <button type="button" className="btn btn-danger px-4" onClick={confirmDelete}>確認刪除</button>
                 </div>
               </div>
             </div>
           </div>
-          {/* 背景遮罩 */}
-          <div className="modal-backdrop fade show"></div>
+          <div className="modal-backdrop fade show" style={{ zIndex: 1050 }}></div>
         </>
       )}
     </div>
